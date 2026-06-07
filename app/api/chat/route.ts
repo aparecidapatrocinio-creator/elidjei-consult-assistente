@@ -1,5 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/db";
+import { sessions, messages } from "@/db/schema";
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -23,9 +25,47 @@ function getGeminiClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, topic, voiceName, level } = await req.json();
+    const { message, history, topic, voiceName, level, sessionId, isSpoken } = await req.json();
 
     const ai = getGeminiClient();
+
+    // Try to initialize external persistence via Supabase
+    let dbSessionId = sessionId;
+    let dbEnabled = false;
+    let db: any = null;
+
+    try {
+      db = getDb();
+      dbEnabled = !!db;
+    } catch (e) {
+      console.warn("Database connection is not configured yet. Proceeding with in-memory chat session.");
+    }
+
+    // Save user's incoming message beforehand if DB is available
+    if (dbEnabled && db) {
+      try {
+        if (!dbSessionId) {
+          const [newSession] = await db.insert(sessions).values({
+            topic: topic || "Ordering Food at a Restaurant",
+            level: level || "Iniciante",
+            voice: voiceName || "Kore",
+            createdHour: new Date().getHours(),
+          }).returning({ id: sessions.id });
+          dbSessionId = newSession.id;
+        }
+
+        if (message) {
+          await db.insert(messages).values({
+            sessionId: dbSessionId,
+            role: "user",
+            text: message,
+            isSpoken: !!isSpoken,
+          });
+        }
+      } catch (dbErr) {
+        console.error("Failed to save user dialog message inside Supabase:", dbErr);
+      }
+    }
 
     // 1. Build the prompt for conversational English tutoring
     const systemInstruction = `You are Teacher Gem Coach, a premium, supportive personal English tutor specializing in spoken conversation.
@@ -113,11 +153,29 @@ Return ONLY the JSON matching the responseSchema. Do not include markdown format
       console.error("Speech synthesis failed, proceeding with text-only reply:", speechErr);
     }
 
+    // Save tutor's response in Supabase if DB is active
+    if (dbEnabled && db && dbSessionId) {
+      try {
+        await db.insert(messages).values({
+          sessionId: dbSessionId,
+          role: "tutor",
+          text: englishReply,
+          translation: parsedData.translation || "",
+          correction: parsedData.correction || "",
+          audioBase64: base64Audio || null,
+          isSpoken: false,
+        });
+      } catch (dbErr) {
+        console.error("Failed to save tutor reply into Supabase database:", dbErr);
+      }
+    }
+
     return NextResponse.json({
       reply: englishReply,
       correction: parsedData.correction || "Ótimo trabalho!",
       translation: parsedData.translation || "",
       audioBase64: base64Audio,
+      sessionId: dbSessionId,
     });
 
   } catch (error: any) {

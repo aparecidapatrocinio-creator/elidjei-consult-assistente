@@ -16,7 +16,8 @@ import {
   ChevronRight, 
   Info, 
   AlertCircle,
-  Play
+  Play,
+  Database
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,58 @@ export default function Home() {
 
   const [timeLeft, setTimeLeft] = useState<number>(900); // 15 minutes static default
 
+  // Supabase states
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"agenda" | "history">("agenda");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [pastSessions, setPastSessions] = useState<any[]>([]);
+  const [dbConfigured, setDbConfigured] = useState<boolean>(false);
+
+  // Load saved sessions from Supabase
+  const loadSessions = async () => {
+    try {
+      const res = await fetch("/api/sessions");
+      if (res.ok) {
+        const data = await res.json();
+        setPastSessions(data.sessions || []);
+        setDbConfigured(!!data.dbConfigured);
+      }
+    } catch (e) {
+      console.warn("Could not query Supabase sessions:", e);
+    }
+  };
+
+  const loadSessionMessages = async (sid: string) => {
+    try {
+      setIsLoading(true);
+      setErrorText("");
+      const res = await fetch(`/api/messages?sessionId=${sid}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+          setSessionId(sid);
+          
+          // Try to restore session metadata if we have it
+          const matchedSess = pastSessions.find(s => s.id === sid);
+          if (matchedSess) {
+            setCurrentHour(matchedSess.createdHour);
+            setLevel(matchedSess.level);
+            setVoice(matchedSess.voice);
+          }
+        } else {
+          setErrorText("A aula selecionada não possui mensagens.");
+        }
+      } else {
+        setErrorText("Não foi possível obter as mensagens desta aula.");
+      }
+    } catch (e) {
+      console.error("Failed to load past session messages", e);
+      setErrorText("Não foi possível carregar o histórico desta aula.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Track unique serial message IDs purely, avoiding Date.now() impure lookups during render checkups
   const messageCounterRef = useRef<number>(1);
 
@@ -89,6 +142,10 @@ export default function Home() {
 
   // Synchronize dynamic hour, class timer, and welcome message on client mount
   useEffect(() => {
+    const initTimerId = setTimeout(() => {
+      loadSessions(); // Check Supabase setup state and sessions
+    }, 50);
+
     const timerId = setTimeout(() => {
       const runTime = new Date();
       const systemHour = runTime.getHours();
@@ -116,7 +173,10 @@ export default function Home() {
       ]);
     }, 0);
 
-    return () => clearTimeout(timerId);
+    return () => {
+      clearTimeout(timerId);
+      clearTimeout(initTimerId);
+    };
   }, []);
 
   const [inputText, setInputText] = useState<string>("");
@@ -296,6 +356,7 @@ export default function Home() {
     setSessionActive(true);
     setInputText("");
     setErrorText("");
+    setSessionId(null); // Reset session ID to fork a new lesson context in database
 
     const targetTopic = LESSON_TOPICS.find(l => l.hour === hourSlot) || LESSON_TOPICS[10];
     const welcomeMsg = `Hello! Welcome to our hourly lesson on "${targetTopic.topic}". I am Teacher Gem Coach, your personal tutor with a premium female voice from Gemini. What is your goal in our 15-minute speaking practice today?`;
@@ -353,7 +414,9 @@ export default function Home() {
           history: conversationHistory,
           topic: activeTopic.topic,
           voiceName: voice,
-          level: level
+          level: level,
+          sessionId: sessionId,
+          isSpoken: userMsg.isSpoken
         })
       });
 
@@ -365,6 +428,12 @@ export default function Home() {
 
       if (data.error) {
         throw new Error(data.error);
+      }
+
+      // Capture generated / returned session ID dynamically
+      if (data.sessionId && data.sessionId !== sessionId) {
+        setSessionId(data.sessionId);
+        loadSessions(); // Refresh historic side tab list
       }
 
       messageCounterRef.current += 1;
@@ -442,84 +511,179 @@ export default function Home() {
       {/* BODY WORKSPACE */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* LEFT COLUMN: THE HOURLY AGENDA (Simulates the 1 hour schedule) */}
+        {/* LEFT COLUMN: THE HOURLY AGENDA (Simulates the 1 hour schedule) or Supabase history */}
         <section className="lg:col-span-4 bg-white border border-[#E2E8F0] rounded-sm p-4 flex flex-col h-[calc(100vh-120px)] lg:sticky lg:top-[76px]" id="sidebar-timeline">
-          <div className="mb-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 pl-1 mb-1">
-              <Clock className="w-4 h-4 text-slate-500" /> TIMELINE DE AULAS (A cada 1h)
-            </h2>
-            <p className="text-xs text-gray-500 pl-1">Uma aula nova começa no início de cada hora e dura 15 minutos.</p>
+          
+          {/* Navigation tabs for Switching views */}
+          <div className="flex border-b border-slate-100 mb-4 bg-slate-50 p-1 rounded-sm gap-1" id="supabase-tab-selector">
+            <button
+              onClick={() => setActiveSidebarTab("agenda")}
+              className={cn(
+                "flex-1 text-center py-2 px-1 rounded-xs text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
+                activeSidebarTab === "agenda"
+                  ? "bg-white text-[#1E3A8A] shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              <Clock className="w-3.5 h-3.5 text-blue-800" />
+              Agenda Temática
+            </button>
+            <button
+              onClick={() => {
+                setActiveSidebarTab("history");
+                loadSessions();
+              }}
+              className={cn(
+                "flex-1 text-center py-2 px-1 rounded-xs text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
+                activeSidebarTab === "history"
+                  ? "bg-white text-[#1E3A8A] shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-700" />
+              Aulas Salvas
+              {dbConfigured && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Supabase Conectado" />
+              )}
+            </button>
           </div>
 
-          {/* List of lesson slots - showing context around active hour */}
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="agenda-scroller">
-            {LESSON_TOPICS.map((lesson) => {
-              const isActive = lesson.hour === currentHour;
-              const isPast = lesson.hour < currentHour;
-              
-              return (
-                <button
-                  key={lesson.hour}
-                  onClick={() => startNewLesson(lesson.hour)}
-                  className={cn(
-                    "w-full text-left p-3 rounded-xs border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
-                    isActive 
-                      ? "border-[#1E3A8A] bg-[#1E3A8A]/5 shadow-xs" 
-                      : isPast
-                        ? "border-[#E2E8F0] bg-slate-50 opacity-75 hover:bg-slate-100"
-                        : "border-[#E2E8F0] bg-white hover:border-slate-300"
-                  )}
-                >
-                  {/* Left blue-indicator bar */}
-                  {isActive && (
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#1E3A8A]" />
-                  )}
+          {activeSidebarTab === "agenda" ? (
+            <>
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 pl-1">Uma aula nova começa no início de cada hora e dura 15 minutos.</p>
+              </div>
 
-                  <div className="pl-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-sm",
+              {/* List of lesson slots - showing context around active hour */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="agenda-scroller">
+                {LESSON_TOPICS.map((lesson) => {
+                  const isActive = lesson.hour === currentHour && !sessionId;
+                  const isPast = lesson.hour < currentHour;
+                  
+                  return (
+                    <button
+                      key={lesson.hour}
+                      onClick={() => startNewLesson(lesson.hour)}
+                      className={cn(
+                        "w-full text-left p-3 rounded-xs border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
                         isActive 
-                          ? "bg-[#1E3A8A] text-white" 
-                          : "bg-slate-200 text-slate-700"
-                      )}>
-                        {String(lesson.hour).padStart(2, "0")}:00
-                      </span>
-                      <span className="text-slate-800 font-bold text-sm leading-tight">
-                        {lesson.topic}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-1 group-hover:line-clamp-none transition-all">
-                      {lesson.desc}
-                    </p>
-                  </div>
+                          ? "border-[#1E3A8A] bg-[#1E3A8A]/5 shadow-xs" 
+                          : isPast
+                            ? "border-[#E2E8F0] bg-slate-50 opacity-75 hover:bg-slate-100"
+                            : "border-[#E2E8F0] bg-white hover:border-slate-300"
+                      )}
+                    >
+                      {/* Left blue-indicator bar */}
+                      {isActive && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#1E3A8A]" />
+                      )}
 
-                  <div className="flex flex-col items-end shrink-0 pl-2">
-                    {isActive ? (
-                      <span className="flex h-2.5 w-2.5 relative">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
-                      </span>
-                    ) : isPast ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-600" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-slate-300" />
-                    )}
-                    <span className="text-[10px] text-slate-400 font-mono mt-2">{lesson.level}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                      <div className="pl-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-sm",
+                            isActive 
+                              ? "bg-[#1E3A8A] text-white" 
+                              : "bg-slate-200 text-slate-700"
+                          )}>
+                            {String(lesson.hour).padStart(2, "0")}:00
+                          </span>
+                          <span className="text-slate-800 font-bold text-sm leading-tight">
+                            {lesson.topic}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-1 group-hover:line-clamp-none transition-all">
+                          {lesson.desc}
+                        </p>
+                      </div>
 
-          {/* Quick Help box */}
-          <div className="mt-4 p-3 bg-red-50/50 rounded-xs border border-red-100 text-xs text-slate-600 flex gap-2">
-            <Info className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-red-900">Como praticar?</p>
-              <p className="mt-0.5">Selecione qualquer hora para simular o início de uma nova aula temática de 15 minutos e converse em inglês.</p>
-            </div>
-          </div>
+                      <div className="flex flex-col items-end shrink-0 pl-2">
+                        {isActive ? (
+                          <span className="flex h-2.5 w-2.5 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                          </span>
+                        ) : isPast ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-slate-300" />
+                        )}
+                        <span className="text-[10px] text-slate-400 font-mono mt-2">{lesson.level}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Quick Help box */}
+              <div className="mt-4 p-3 bg-red-50/50 rounded-xs border border-red-100 text-xs text-slate-600 flex gap-2">
+                <Info className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-900">Como praticar?</p>
+                  <p className="mt-0.5">Selecione qualquer hora para simular o início de uma nova aula temática de 15 minutos e converse em inglês.</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* HISTORICAL SESSIONS LIST FROM SUPABASE */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {!dbConfigured ? (
+                  <div className="text-center py-10 px-4 text-xs text-slate-500 bg-slate-50 rounded-sm border border-dashed border-slate-200 flex-1 flex flex-col justify-center items-center">
+                    <Database className="w-8 h-8 text-slate-400 mb-2 animate-pulse" />
+                    <p className="font-bold text-slate-700">Supabase não conectado</p>
+                    <p className="mt-1 text-slate-500 max-w-[200px]">Adicione um banco de dados Supabase informando o valor do segredo <code className="bg-slate-100 font-mono px-1 rounded border text-[10px] text-red-600">DATABASE_URL</code> nas Configurações.</p>
+                  </div>
+                ) : pastSessions.length === 0 ? (
+                  <div className="text-center py-10 px-4 text-xs text-slate-500 bg-slate-50 rounded-sm border border-dashed border-slate-200 flex-1 flex flex-col justify-center items-center">
+                    <CheckCircle className="w-8 h-8 text-emerald-500 mb-2" />
+                    <p className="font-bold text-slate-700 text-emerald-900">Supabase conectado!</p>
+                    <p className="mt-1 text-slate-500 max-w-[200px]">Nenhum histórico encontrado ainda. Selecione uma aula na Timeline, digite e envie uma mensagem para salvá-la permanentemente.</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="supabase-scroller">
+                    {pastSessions.map((sess) => {
+                      const isSelected = sessionId === sess.id;
+                      return (
+                        <button
+                          key={sess.id}
+                          onClick={() => loadSessionMessages(sess.id)}
+                          className={cn(
+                            "w-full text-left p-3 rounded-xs border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
+                            isSelected
+                              ? "border-emerald-600 bg-emerald-50/20"
+                              : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-xs"
+                          )}
+                        >
+                          {isSelected && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-600" />
+                          )}
+                          <div className="pl-1.5">
+                            <h3 className="font-bold text-xs text-slate-800 leading-tight mb-1 group-hover:text-emerald-700 transition-colors">
+                              {sess.topic}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-500 font-mono">
+                              <span className="bg-slate-100 text-slate-600 px-1 rounded-sm">{sess.level}</span>
+                              <span>•</span>
+                              <span>
+                                {new Date(sess.createdAt).toLocaleDateString("pt-BR", {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-slate-300 self-center group-hover:text-emerald-600 transition-colors shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </section>
 
         {/* RIGHT COLUMN: ACTIVE CLASSROOM WORKSPACE */}
