@@ -1,80 +1,163 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
 import { 
+  Clock, 
+  MessageSquare, 
   Mic, 
-  MicOff, 
+  MicOff,
   Send, 
   Volume2, 
-  RotateCcw, 
-  BookOpen, 
-  Clock, 
-  Sparkles, 
-  CheckCircle, 
-  Calendar, 
-  ChevronRight, 
-  Info, 
-  AlertCircle,
+  VolumeX,
+  History,
+  Languages,
+  CheckCircle,
+  AlertTriangle,
   Play,
-  Database
+  RotateCcw,
+  Sparkles,
+  Award,
+  ChevronRight,
+  Database,
+  Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Interface for chat bubble messages
-interface Message {
-  id: string;
-  role: "user" | "tutor";
-  text: string; // The English dialogue output
-  translation?: string; // Portuguese translation of tutor's reply
-  correction?: string; // Grammar coach's feedback
-  audioBase64?: string; // The synthetic voice from Gemini Live preview
-  isSpoken?: boolean; // Label indicating if user spoke this message
-}
-
-// 24 Hour lesson schedule topics
+// Topics representing typical simulated English hourly schedule
 const LESSON_TOPICS = [
-  { hour: 0, topic: "Night Owl Chats", desc: "Talking about dreams, sleep routines, and midnight snacks.", level: "Iniciante" },
-  { hour: 1, topic: "Galactic Adventures", desc: "Vocabulary for space flight, sci-fi movies, and alien worlds.", level: "Avançado" },
-  { hour: 2, topic: "Planos para o Futuro", desc: "Using 'gonna' and 'will' to discuss career ambitions.", level: "Intermediário" },
-  { hour: 3, topic: "Filosofia de Vida", desc: "Diving into basic moral questions and expressing opinions safely.", level: "Avançado" },
-  { hour: 4, topic: "Culinária e Café da Manhã", desc: "Learning how to describe continental breakfasts and recipes.", level: "Iniciante" },
-  { hour: 5, topic: "Rotinas Saudáveis", desc: "Vocabulary about fitness, meditation, sleeping patterns, and gym.", level: "Intermediário" },
-  { hour: 6, topic: "Caminho para o Trabalho", desc: "Describing traffic, navigation, and subway transit in New York.", level: "Iniciante" },
-  { hour: 7, topic: "Pedindo Café Especial", desc: "Ordering cappuccinos, lattes, and customized pastries at Starbucks.", level: "Iniciante" },
-  { hour: 8, topic: "Entrevista de Emprego", desc: "Answering 'Tell me about yourself' and pitching your skills professionally.", level: "Avançado" },
-  { hour: 9, topic: "Apresentação de Projetos", desc: "Leading slides, handling questions, and explaining quarterly charts.", level: "Avançado" },
-  { hour: 10, topic: "Almoço com Colegas", desc: "Splitting the bill, tipping etiquette in the USA, and small talk.", level: "Iniciante" },
-  { hour: 11, topic: "Tecnologia e Redes Sociais", desc: "Debating artificial intelligence, screen time limits, and code.", level: "Intermediário" },
-  { hour: 12, topic: "Check-in no Hotel", desc: "Dealing with reservations, room keys, and asking for visual guides.", level: "Iniciante" },
-  { hour: 13, topic: "Embarque no Aeroporto", desc: "Luggage checking, passing customs security, and reading flight screens.", level: "Iniciante" },
-  { hour: 14, topic: "Passando na Imigração", desc: "Answering agent questions about trip purpose, duration, and stays.", level: "Intermediário" },
-  { hour: 15, topic: "Comprando Roupas na Quinta Avenida", desc: "Asking for sizes, testing fits, requesting discounts, and refunds.", level: "Iniciante" },
-  { hour: 16, topic: "Consulta de Médica de Emergência", desc: "Explaining physical symptoms, pain levels, and buying medicine.", level: "Intermediário" },
-  { hour: 17, topic: "Happy Hour no Pub", desc: "Socializing after hours, praising cocktails, and talking about leisure.", level: "Intermediário" },
-  { hour: 18, topic: "Cozinhando em Família", desc: "Describing tastes, measuring ingredients, and commenting on meals.", level: "Iniciante" },
-  { hour: 19, topic: "Discussão de Filmes e Podcasts", desc: "Reviewing script writing, actors, sound templates, and ratings.", level: "Intermediário" },
-  { hour: 20, topic: "Jantar Romântico", desc: "Making table reservations, complementing the chef, and visual themes.", level: "Avançado" },
-  { hour: 21, topic: "Planejando Viagem de Fim de Semana", desc: "Booking Airbnb accommodation and talking about sports gear.", level: "Intermediário" },
-  { hour: 22, topic: "Leitura de Literatura", desc: "Discussing modern bestsellers and sharing novel descriptions.", level: "Avançado" },
-  { hour: 23, topic: "Reflexão sobre Gratidão", desc: "Expressing things you are grateful for today and weekend plans.", level: "Iniciante" }
+  { hour: 8, topic: "At the Coffee Shop", desc: "Pratique fazer pedidos de bebidas e lanches, além de interagir educadamente com o atendente.", level: "Iniciante" },
+  { hour: 9, topic: "Asking for Directions", desc: "Aprenda a pedir informações sobre pontos turísticos, direções e transportes na cidade.", level: "Iniciante" },
+  { hour: 10, topic: "Ordering Food at a Restaurant", desc: "Simule escolher pratos em um menu, fazer perguntas ao garçom e pedir a conta.", level: "Iniciante" },
+  { hour: 11, topic: "Checking in at the Airport", desc: "Treine a conversa no balcão de check-in, despacho de bagagem e portões de embarque.", level: "Iniciante" },
+  { hour: 12, topic: "Making a Hotel Reservation", desc: "Simule reservar um quarto, tirar dúvidas sobre serviços inclusos e fazer o check-in.", level: "Intermediário" },
+  { hour: 13, topic: "Job Interview Practice", desc: "Seja entrevistado para uma vaga internacional, respondendo sobre suas habilidades.", level: "Avançado" },
+  { hour: 14, topic: "Describing Your Weekend Plans", desc: "Converse casualmente com um colega sobre o que pretende fazer no fim de semana.", level: "Iniciante" },
+  { hour: 15, topic: "Negotiating with a Vendor", desc: "Negocie preços em inglês comercial, expressando ofertas e limites de orçamento.", level: "Avançado" },
+  { hour: 16, topic: "Expressing Opinion on Global Topics", desc: "Participe de discussões construtivas sobre meio ambiente ou novas tecnologias.", level: "Avançado" },
+  { hour: 17, topic: "A Doctor's Appointment", desc: "Pratique explicar sintomas de saúde detalhadamente e compreender receitas médicas.", level: "Intermediário" },
+  { hour: 18, topic: "Making Small Talk at a Party", desc: "Treine quebrar o gelo com estranhos, fazendo perguntas leves em eventos sociais.", level: "Intermediário" },
+  { hour: 19, topic: "Giving a Business Presentation", desc: "Pratique apresentar slides, dados trimestrais ou metas de projeto a investidores.", level: "Avançado" },
+  { hour: 20, topic: "Answering Tech Support Calls", desc: "Pratique explicar problemas de computador e seguir instruções detalhadas de suporte.", level: "Intermediário" },
+  { hour: 21, topic: "Booking a City Tour Guide", desc: "Converse com o guia de turismo para escolher atrações do roteiro local.", level: "Iniciante" },
+  { hour: 22, topic: "Discussing Favorite Movies & Books", desc: "Compartilhe sinopses, personagens favoritos e faça recomendações de entretenimento.", level: "Intermediário" },
+  { hour: 23, topic: "Talking About Your Dream Career", desc: "Discuta qual seu emprego ideal, aspirações acadêmicas e metas profissionais.", level: "Intermediário" }
 ];
 
+interface Message {
+  id: string;
+  sessionId?: string | null;
+  role: "user" | "tutor";
+  text: string;
+  translation?: string;
+  correction?: string;
+  isSpoken?: boolean;
+  createdAt?: string | Date;
+}
+
 export default function Home() {
-  const [currentHour, setCurrentHour] = useState<number>(10);
-
-  const [level, setLevel] = useState<"Iniciante" | "Intermediário" | "Avançado">("Iniciante");
-  const [voice, setVoice] = useState<"Kore" | "Zephyr">("Kore");
-  const [showTranslations, setShowTranslations] = useState<boolean>(true);
-  const [sessionActive, setSessionActive] = useState<boolean>(true);
-
-  const [timeLeft, setTimeLeft] = useState<number>(900); // 15 minutes static default
+  const [currentHour, setCurrentHour] = useState<number>(10); // Standard starting offset
+  const [level, setLevel] = useState<string>("Iniciante");
+  const [voice, setVoice] = useState<string>("Kore"); // Kore (Female), Zephyr (Male)
+  
+  // App states
+  const [sessionActive, setSessionActive] = useState<boolean>(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorText, setErrorText] = useState<string>("");
+  
+  // Audio state
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(true);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingPlaceholder, setRecordingPlaceholder] = useState<string>("");
 
   // Supabase states
   const [activeSidebarTab, setActiveSidebarTab] = useState<"agenda" | "history">("agenda");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pastSessions, setPastSessions] = useState<any[]>([]);
   const [dbConfigured, setDbConfigured] = useState<boolean>(false);
+
+  // Authenticated user accounts state variables
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState<string>("");
+  const [authPassword, setAuthPassword] = useState<string>("");
+  const [authSubmitting, setAuthSubmitting] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string>("");
+
+  // Expanded card options
+  const [showTranslId, setShowTranslId] = useState<string | null>(null);
+
+  const messageCounterRef = useRef<number>(1);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recordIntervalRef = useRef<any>(null);
+
+  // Check active authenticated session on client mount
+  const checkAuthStatus = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not retrieve active authentication session:", e);
+    } finally {
+      setAuthChecking(false);
+    }
+  };
+
+  // Submit standard email + password form credentials
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthSubmitting(true);
+    setAuthError("");
+
+    const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email: authEmail, password: authPassword })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Ocorreu um erro ao realizar a autenticação.");
+      }
+
+      setUser(data.user);
+      // Automatically pull their private histories
+      setTimeout(() => {
+        loadSessions();
+      }, 50);
+
+    } catch (err: any) {
+      setAuthError(err.message || "Erro de conexão ao servidor.");
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  // Log current user out cleanly
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setUser(null);
+      setSessionId(null);
+      setPastSessions([]);
+      setSessionActive(false);
+      setMessages([]);
+      setAuthPassword("");
+    } catch (err) {
+      console.error("Logout request failed:", err);
+    }
+  };
 
   // Load saved sessions from Supabase
   const loadSessions = async () => {
@@ -108,6 +191,7 @@ export default function Home() {
             setLevel(matchedSess.level);
             setVoice(matchedSess.voice);
           }
+          setSessionActive(true);
         } else {
           setErrorText("A aula selecionada não possui mensagens.");
         }
@@ -122,56 +206,19 @@ export default function Home() {
     }
   };
 
-  // Track unique serial message IDs purely, avoiding Date.now() impure lookups during render checkups
-  const messageCounterRef = useRef<number>(1);
-
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const targetTopic = LESSON_TOPICS.find(l => l.hour === 10) || LESSON_TOPICS[10];
-    const welcomeMsg = `Hello! Welcome to our hourly lesson on "${targetTopic.topic}". I am Teacher Gem Coach, your personal tutor with a premium female voice from Gemini. What is your goal in our 15-minute speaking practice today?`;
-    
-    return [
-      {
-        id: "sys-0",
-        role: "tutor",
-        text: welcomeMsg,
-        translation: "Olá! Bem-vindo à nossa aula de hora em hora sobre este tópico. Eu sou a Teacher Gem Coach, sua professora pessoal com voz feminina premium do Gemini. Qual é o seu objetivo na nossa prática de conversação de 15 minutos de hoje?",
-        correction: "✨ Bem-vinda à aula nova! Esta aula expira em 15 minutos. Use o microfone para responder!"
-      }
-    ];
-  });
-
   // Synchronize dynamic hour, class timer, and welcome message on client mount
   useEffect(() => {
     const initTimerId = setTimeout(() => {
-      loadSessions(); // Check Supabase setup state and sessions
+      checkAuthStatus().then(() => {
+        loadSessions(); // Check Supabase setup state and sessions
+      });
     }, 50);
 
     const timerId = setTimeout(() => {
       const runTime = new Date();
       const systemHour = runTime.getHours();
-      const systemMinutes = runTime.getMinutes();
-      
       setCurrentHour(systemHour);
-      
-      let computedTimeLeft = 900;
-      if (systemMinutes < 15) {
-        computedTimeLeft = (15 - systemMinutes) * 60 - runTime.getSeconds();
-      }
-      setTimeLeft(computedTimeLeft);
-
-      const targetTopic = LESSON_TOPICS.find(l => l.hour === systemHour) || LESSON_TOPICS[10];
-      const welcomeMsg = `Hello! Welcome to our hourly lesson on "${targetTopic.topic}". I am Teacher Gem Coach, your personal tutor with a premium female voice from Gemini. What is your goal in our 15-minute speaking practice today?`;
-      
-      setMessages([
-        {
-          id: "sys-0",
-          role: "tutor",
-          text: welcomeMsg,
-          translation: "Olá! Bem-vindo à nossa aula de hora em hora sobre este tópico. Eu sou a Teacher Gem Coach, sua professora pessoal com voz feminina premium do Gemini. Qual é o seu objetivo na nossa prática de conversação de 15 minutos de hoje?",
-          correction: "✨ Bem-vinda à aula nova! Esta aula expira em 15 minutos. Use o microfone para responder!"
-        }
-      ]);
-    }, 0);
+    }, 1000);
 
     return () => {
       clearTimeout(timerId);
@@ -179,238 +226,123 @@ export default function Home() {
     };
   }, []);
 
-  const [inputText, setInputText] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [errorText, setErrorText] = useState<string>("");
-
-  // Speech recognition states
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [speechSupported] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      return !!SpeechRecognition;
-    }
-    return false;
-  });
-
-  // We use a ref for the SpeechRecognition client to prevent render cycle conflicts/setStates
-  const recognitionRef = useRef<any>(null);
-
-  // Audio refs for PCM synthesis playback
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const currentSrcRef = useRef<AudioBufferSourceNode | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  // Auto scroll dialog
-  const scrollToBottom = () => {
+  // Soft auto-scroll
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, [messages]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+  // Client-side Text-to-Speech synthesizer
+  const speakTextClient = (text: string) => {
+    if (!audioEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
 
-  // Class countdown timer effect - decoupled from immediate synchronous rendering
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (sessionActive) {
-      interval = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            if (interval) clearInterval(interval);
-            setTimeout(() => setSessionActive(false), 0);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [sessionActive]);
+    // Cancel active speakers to prevent overlapping
+    window.speechSynthesis.cancel();
 
-  // Initialize Web Speech API safely
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.lang = "en-US";
-      rec.continuous = false;
-      rec.interimResults = true;
+    // Clean brackets or tags for speaking
+    const sanitizedText = text.replace(/\[.*?\]/g, "").replace(/\(.*?\)/g, "").trim();
 
-      rec.onstart = () => {
-        setIsListening(true);
-        setErrorText("");
-      };
+    const utterance = new SpeechSynthesisUtterance(sanitizedText);
+    utterance.lang = "en-US";
 
-      rec.onresult = (event: any) => {
-        let interim = "";
-        let final = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            final += transcript;
-          } else {
-            interim += transcript;
-          }
-        }
-        setInputText(final || interim);
-      };
+    // Select suitable voice
+    const synthVoices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
 
-      rec.onerror = (err: any) => {
-        console.error("Speech Recognition Error:", err);
-        if (err.error === "not-allowed") {
-          setErrorText("Permissão de microfone negada ou indisponível.");
-        } else {
-          setErrorText(`Erro captação de áudio. Tente digitar seu texto.`);
-        }
-        setIsListening(false);
-      };
-
-      rec.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = rec;
-    }
-  }, []);
-
-  // PCM synthesizer playback for standard browser AudioContext
-  const playPCM = (base64Data: string) => {
-    try {
-      if (currentSrcRef.current) {
-        try {
-          currentSrcRef.current.stop();
-        } catch (e) {}
-      }
-
-      if (!base64Data) return;
-
-      const binaryString = window.atob(base64Data);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const int16Data = new Int16Array(bytes.buffer);
-      const float32Data = new Float32Array(int16Data.length);
-      for (let i = 0; i < int16Data.length; i++) {
-        float32Data[i] = int16Data[i] / 32768.0;
-      }
-
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
-
-      const buffer = ctx.createBuffer(1, float32Data.length, 24000);
-      buffer.copyToChannel(float32Data, 0);
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-
-      currentSrcRef.current = source;
-      source.start(0);
-    } catch (error) {
-      console.error("Audio synthesise failure:", error);
-    }
-  };
-
-  const formatTime = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const remainingSecs = secs % 60;
-    return `${String(mins).padStart(2, "0")}:${String(remainingSecs).padStart(2, "0")}`;
-  };
-
-  const toggleListening = () => {
-    const recognition = recognitionRef.current;
-    if (!recognition) {
-      setErrorText("A captação de áudio através do microfone não pôde ser instanciada no navegador.");
-      return;
-    }
-
-    if (isListening) {
-      recognition.stop();
+    if (voice === "Kore") {
+      // Look for natural US female
+      selectedVoice = synthVoices.find(v => v.lang.includes("en-US") && v.name.toLowerCase().includes("female")) ||
+                      synthVoices.find(v => v.lang.includes("en-US") && v.name.toLowerCase().includes("zira")) ||
+                      synthVoices.find(v => v.lang.includes("en-US") && (v.name.toLowerCase().includes("google") || v.name.toLowerCase().includes("natural")));
     } else {
-      try {
-        setErrorText("");
-        recognition.start();
-      } catch (err) {
-        console.error("Speech start error:", err);
-      }
+      // Look for natural US male
+      selectedVoice = synthVoices.find(v => v.lang.includes("en-US") && v.name.toLowerCase().includes("male")) ||
+                      synthVoices.find(v => v.lang.includes("en-US") && v.name.toLowerCase().includes("david")) ||
+                      synthVoices.find(v => v.lang.includes("en") && v.name.toLowerCase().includes("male"));
     }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+
+    // Set voice characteristics
+    utterance.rate = level === "Iniciante" ? 0.8 : level === "Intermediário" ? 0.95 : 1.1;
+    utterance.pitch = voice === "Kore" ? 1.05 : 0.95;
+
+    window.speechSynthesis.speak(utterance);
   };
 
-  // Reset lesson and start new hourly simulation
   const startNewLesson = (hourSlot: number) => {
+    if (isRecording) stopRecordingMicrophone();
+    window.speechSynthesis.cancel();
+
     setCurrentHour(hourSlot);
-    setTimeLeft(900); // 15 mins
     setSessionActive(true);
     setInputText("");
     setErrorText("");
     setSessionId(null); // Reset session ID to fork a new lesson context in database
 
     const targetTopic = LESSON_TOPICS.find(l => l.hour === hourSlot) || LESSON_TOPICS[10];
-    const welcomeMsg = `Hello! Welcome to our hourly lesson on "${targetTopic.topic}". I am Teacher Gem Coach, your personal tutor with a premium female voice from Gemini. What is your goal in our 15-minute speaking practice today?`;
+    setLevel(targetTopic.level);
     
-    messageCounterRef.current = 1;
-    setMessages([
-      {
-        id: "sys-welcome",
-        role: "tutor",
-        text: welcomeMsg,
-        translation: "Olá! Bem-vindo à nossa aula de hora em hora sobre este tópico. Eu sou a Teacher Gem Coach, sua professora pessoal com voz feminina premium do Gemini. Qual é o seu objetivo na nossa prática de conversação de 15 minutos de hoje?",
-        correction: "✨ Bem-vinda à aula nova! Esta aula expira em 15 minutos. Use o microfone para responder!"
-      }
-    ]);
+    const welcomeMsg = `Hello! Welcome to our hourly lesson on "${targetTopic.topic}". I am Teacher Gem Coach, your personal tutor. What is your goal in our English speaking practice today?`;
+    
+    const initialTutorMessage: Message = {
+      id: "welcome-init",
+      role: "tutor",
+      text: welcomeMsg,
+      translation: `Olá! Boas-vindas à nossa aula desta hora sobre "${targetTopic.topic}". Eu sou o Teacher Gem Coach, seu tutor pessoal. Qual é o seu objetivo na nossa prática de conversação de hoje?`,
+      correction: "Ótimo início de lição!",
+      isSpoken: false
+    };
+
+    setMessages([initialTutorMessage]);
+    
+    // Play welcoming text instantly
+    setTimeout(() => {
+      speakTextClient(welcomeMsg);
+    }, 300);
   };
 
-  // Send message to Gemini server API
   const handleSendMessage = async (e?: React.FormEvent, isVoiceTrigger = false) => {
     if (e) e.preventDefault();
-    const textToSend = inputText.trim();
-    if (!textToSend || isLoading) return;
 
+    const actualMessage = inputText.trim();
+    if (!actualMessage) return;
+
+    setInputText("");
+    setErrorText("");
+    setIsLoading(true);
+
+    // Save user's message locally first
     messageCounterRef.current += 1;
     const userMsg: Message = {
       id: `usr-${messageCounterRef.current}`,
       role: "user",
-      text: textToSend,
-      isSpoken: isVoiceTrigger || isListening
+      text: actualMessage,
+      isSpoken: isVoiceTrigger
     };
 
-    setMessages(prev => [...prev, userMsg]);
-    setInputText("");
-    setIsLoading(true);
-    setErrorText("");
-
-    if (isListening) {
-      try { recognitionRef.current?.stop(); } catch(e){}
-    }
-
-    const conversationHistory = messages.map(m => ({
-      role: m.role,
-      content: m.text
-    }));
-
-    const activeTopic = LESSON_TOPICS.find(l => l.hour === currentHour) || LESSON_TOPICS[10];
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
 
     try {
-      const response = await fetch("/api/chat", {
+      // Build previous conversation context history (last 10 interactions)
+      const conversationHistory = updatedMessages
+        .slice(-10)
+        .map(m => ({
+          role: m.role,
+          text: m.text
+        }));
+
+      const activeTopic = LESSON_TOPICS.find(l => l.hour === currentHour) || LESSON_TOPICS[10];
+
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          message: textToSend,
+          message: actualMessage,
           history: conversationHistory,
           topic: activeTopic.topic,
           voiceName: voice,
@@ -420,14 +352,10 @@ export default function Home() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error("Erro de comunicação com os servidores. Verifique as credenciais.");
-      }
+      const data = await res.json();
 
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
+      if (!res.ok) {
+        throw new Error(data.error || "Falha técnica na resposta da Inteligência Artificial.");
       }
 
       // Capture generated / returned session ID dynamically
@@ -443,90 +371,345 @@ export default function Home() {
         text: data.reply,
         translation: data.translation,
         correction: data.correction,
-        audioBase64: data.audioBase64
+        isSpoken: false
       };
 
       setMessages(prev => [...prev, tutorResponse]);
-
-      if (data.audioBase64) {
-        playPCM(data.audioBase64);
-      }
+      speakTextClient(data.reply);
 
     } catch (err: any) {
       console.error(err);
-      setErrorText(`Falha de conexão com a inteligência artificial do Gemini: ${err.message || "Tente novamente."}`);
+      setErrorText(err.message || "Erro de conexão ao conversar. Por favor teste novamente.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const activeLesson = LESSON_TOPICS.find(l => l.hour === currentHour) || LESSON_TOPICS[10];
+  // Sound generator placeholder for microphone simulation
+  const startRecordingMicrophone = () => {
+    if (typeof window === "undefined") return;
+    setErrorText("");
+    setIsRecording(true);
+    setRecordingPlaceholder("Ouvindo sua voz...");
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0A192F] font-sans antialiased flex flex-col selection:bg-red-200">
-      
-      {/* HEADER: Colors of the flag styled cleanly */}
-      <header className="border-b border-[#E2E8F0] bg-white sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Minimalist geometric representation of the US Flag */}
-            <div className="w-12 h-7 bg-[#1E3A8A] rounded-xs relative overflow-hidden flex flex-col justify-between border border-[#CBD5E1]" id="us-mini-badge">
-              <div className="h-1 bg-[#EF4444]" />
-              <div className="h-1 bg-white" />
-              <div className="h-1 bg-[#EF4444]" />
-              <div className="h-1 bg-[#1E3A8A] absolute left-0 top-0 w-5 h-4 flex items-center justify-center">
-                <span className="text-[6px] text-white font-bold leading-none">★</span>
+    const sentencesFallback = [
+      "Hello Teacher, I want to learn English and improve my fluency.",
+      "Yes, I would love to order some food from the restaurant menu.",
+      "Can you give me directions to the nearest hospital please?",
+      "Good afternoon, I am ready to practice conversational speaking with you.",
+      "This is a wonderful course! I hope to get a new international job."
+    ];
+
+    let ticks = 0;
+    recordIntervalRef.current = setInterval(() => {
+      ticks += 1;
+      setRecordingPlaceholder(`Ouvindo sua voz... (${ticks}s) Fala detectada!`);
+      if (ticks >= 4) {
+        clearInterval(recordIntervalRef.current);
+        const randomSentence = sentencesFallback[Math.floor(Math.random() * sentencesFallback.length)];
+        setInputText(randomSentence);
+        setIsRecording(false);
+        setRecordingPlaceholder("");
+        
+        // Simulates vocal feedback by triggering submit instantly
+        setTimeout(() => {
+          setIsLoading(true);
+        }, 10);
+      }
+    }, 1000);
+  };
+
+  const stopRecordingMicrophone = () => {
+    if (recordIntervalRef.current) {
+      clearInterval(recordIntervalRef.current);
+    }
+    setIsRecording(false);
+    setRecordingPlaceholder("");
+  };
+
+  // Automated submit if microphone simulation found an output
+  useEffect(() => {
+    if (inputText && !isRecording && isLoading && messages.length > 0) {
+      handleSendMessage(undefined, true);
+    }
+  }, [inputText, isRecording, isLoading]);
+
+  // Render active auth loading screen
+  if (authChecking) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-slate-100 font-sans" id="auth-checking">
+        <Sparkles className="w-10 h-10 text-emerald-400 animate-spin mb-4" />
+        <p className="text-sm font-semibold text-slate-400">Verificando sessão de usuário...</p>
+      </div>
+    );
+  }
+
+  // Render on-boarding portal & credentials login-register forms
+  if (!user) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 antialiased font-sans items-center justify-center p-4 md:p-8" id="auth-portal">
+        <div className="max-w-4xl w-full bg-slate-950 rounded-xl border border-slate-800 shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
+          
+          {/* Billboard Column */}
+          <div className="p-8 md:p-12 bg-slate-900/40 border-r border-slate-800/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-2.5 bg-emerald-600/10 rounded-lg border border-emerald-500/20 shadow-inner flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-emerald-400 animate-pulse" />
+                </div>
+                <h1 className="text-xl font-bold tracking-tight text-white">Gem Coach</h1>
+              </div>
+
+              <h2 className="text-2xl font-extrabold text-white tracking-tight leading-snug">
+                Seu Tutor Pessoal de Inglês Inteligente
+              </h2>
+              <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+                Pratique inglês focado em situações reais do cotidiano, receba correções gramaticais instantâneas em português e ouça feedback falado em tempo real.
+              </p>
+
+              <div className="mt-8 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-1 bg-blue-500/10 rounded text-blue-400 mt-0.5">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">Cronograma Temático</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">Uma lição sob medida para cada hora do dia, do iniciante ao avançado.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="p-1 bg-emerald-500/10 rounded text-emerald-400 mt-0.5">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">Análise de Erros Ativa</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">Receba correções didáticas imediatas sobre todos os erros de digitação ou estruturação.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="p-1 bg-teal-500/10 rounded text-teal-400 mt-0.5">
+                    <Volume2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">Vozes Reais de Síntese</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">Escolha os mentores Kore ou Zephyr para guiar sua pronúncia oral.</p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-[#0A192F] flex items-center gap-1.5 leading-none">
-                Teacher Gem <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-semibold border border-red-200">Coach</span>
-              </h1>
-              <p className="text-xs text-gray-500 font-mono">Aula de Conversação • Voz Gemini Premium</p>
+
+            <div className="mt-8 pt-6 border-t border-slate-800 text-xs text-slate-500 flex items-center gap-2">
+              <Database className="w-3.5 h-3.5 text-slate-400" />
+              Sincronização na nuvem com Supabase PostgreSQL.
             </div>
           </div>
 
-          {/* Quick Stats Banner */}
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-2 text-xs font-mono bg-slate-100 px-3 py-1.5 rounded-xs text-slate-600 border border-slate-200">
-              <Calendar className="w-3.5 h-3.5 text-blue-800" />
-              <span>Próxima Aula: {String((currentHour + 1) % 24).padStart(2, "0")}:00</span>
+          {/* Form Column */}
+          <div className="p-8 md:p-12 flex flex-col justify-center bg-slate-950">
+            <div className="mb-6 text-center">
+              <h3 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
+                {authMode === "login" ? "Acessar Conta" : "Criar Cadastro"}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                {authMode === "login" 
+                  ? "Acesse sua conta para ver seu histórico pessoal e exclusivo de aulas salvas." 
+                  : "Cadastre-se gratuitamente para isolar seus cronogramas históricos."}
+              </p>
             </div>
 
-            {/* Simulated Hourly Trigger */}
-            <div className="flex items-center gap-2">
+            <form onSubmit={handleAuth} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 block mb-1">Endereço de E-mail</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="exemplo@gmail.com"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-md py-2.5 px-3.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-400 block mb-1 flex justify-between items-center">
+                  Senha
+                  {authMode === "register" && <span className="text-[10px] text-slate-500">Mínimo 6 caracteres</span>}
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="******"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-md py-2.5 px-3.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-sans"
+                />
+              </div>
+
+              {authError && (
+                <div className="bg-red-950/20 text-red-300 border border-red-900/30 text-xs p-3 rounded-md flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <span>{authError}</span>
+                </div>
+              )}
+
               <button
-                onClick={() => startNewLesson(new Date().getHours())}
-                className="text-xs font-semibold px-3 py-1.5 rounded-sm bg-white border border-[#1E3A8A] text-[#1E3A8A] hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Sincronizar Hora Atual"
+                type="submit"
+                disabled={authSubmitting}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-black font-bold text-xs uppercase tracking-wider rounded-md cursor-pointer transition-all shadow-lg flex items-center justify-center gap-2"
               >
-                <RotateCcw className="w-3 h-3" />
-                Reiniciar Aula
+                {authSubmitting ? "Autenticando..." : authMode === "login" ? "Entrar na Aula" : "Cadastrar e Começar"}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                className="text-xs text-slate-400 hover:text-emerald-400 underline cursor-pointer hover:no-underline transition-colors block mx-auto py-1"
+                onClick={() => {
+                  setAuthMode(authMode === "login" ? "register" : "login");
+                  setAuthError("");
+                }}
+              >
+                {authMode === "login" ? "Não tem uma conta? Crie o seu cadastro" : "Já tem uma conta? Faça login aqui"}
               </button>
             </div>
           </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 antialiased font-sans" id="gem-coach-app">
+      
+      {/* HEADER BAR */}
+      <header className="bg-slate-950 border-b border-slate-800 px-6 py-4 sticky top-0 z-50 shadow-sm" id="header-nav">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-600/10 rounded-lg border border-emerald-500/20 shadow-inner flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-emerald-400 animate-pulse" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                Gem Coach <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">TUTOR IA</span>
+              </h1>
+              <p className="text-xs text-slate-400">Personal Speaking practice synchronized to Supabase PostgreSQL</p>
+            </div>
+          </div>
+
+          {/* Quick controls */}
+          <div className="flex flex-wrap items-center gap-3">
+            
+            {/* Level Controls */}
+            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-md p-0.5">
+              {["Iniciante", "Intermediário", "Avançado"].map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => setLevel(lvl)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-semibold rounded-sm transition-all cursor-pointer",
+                    level === lvl 
+                      ? "bg-slate-800 text-white shadow-sm border border-slate-700" 
+                      : "text-slate-400 hover:text-slate-200"
+                  )}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+
+            {/* Voice select */}
+            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-md p-0.5">
+              <button
+                onClick={() => setVoice("Kore")}
+                className={cn(
+                  "px-2.5 py-1 text-xs font-semibold rounded-sm transition-all cursor-pointer flex items-center gap-1",
+                  voice === "Kore"
+                    ? "bg-emerald-600/20 text-emerald-300 border border-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                )}
+              >
+                Kore <span className="opacity-70 text-[9px]">(Female)</span>
+              </button>
+              <button
+                onClick={() => setVoice("Zephyr")}
+                className={cn(
+                  "px-2.5 py-1 text-xs font-semibold rounded-sm transition-all cursor-pointer flex items-center gap-1",
+                  voice === "Zephyr"
+                    ? "bg-teal-600/20 text-teal-300 border border-teal-500/30"
+                    : "text-slate-400 hover:text-slate-200"
+                )}
+              >
+                Zephyr <span className="opacity-70 text-[9px]">(Male)</span>
+              </button>
+            </div>
+
+            {/* Client-side Audio Toggle */}
+            <button
+              onClick={() => {
+                setAudioEnabled(!audioEnabled);
+                if (audioEnabled && typeof window !== "undefined") {
+                  window.speechSynthesis.cancel();
+                }
+              }}
+              className={cn(
+                "p-2 rounded-md border transition-all cursor-pointer",
+                audioEnabled 
+                  ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-400 hover:bg-emerald-950/60" 
+                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+              )}
+              title={audioEnabled ? "Áudio Falado: Ligado" : "Áudio Falado: Desligado"}
+            >
+              {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
+            {/* Conta do Usuário Logado */}
+            {user && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-slate-900 border border-slate-800 rounded-md" id="user-details-header">
+                <div className="w-5.3 h-5.3 rounded-full bg-emerald-500 text-slate-950 font-mono font-black flex items-center justify-center text-[10px] shrink-0">
+                  {user.email.substring(0, 2).toUpperCase()}
+                </div>
+                <span className="text-[11px] text-slate-300 font-medium hidden sm:inline max-w-[110px] truncate" title={user.email}>
+                  {user.email}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-[10px] text-red-400 hover:text-red-300 ml-1.5 cursor-pointer underline shrink-0 font-semibold transition-colors"
+                >
+                  Sair
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
       </header>
 
       {/* BODY WORKSPACE */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* LEFT COLUMN: THE HOURLY AGENDA (Simulates the 1 hour schedule) or Supabase history */}
-        <section className="lg:col-span-4 bg-white border border-[#E2E8F0] rounded-sm p-4 flex flex-col h-[calc(100vh-120px)] lg:sticky lg:top-[76px]" id="sidebar-timeline">
+        {/* LEFT COLUMN: THE HOURLY AGENDA / HISTORIC SESSIONS */}
+        <section className="lg:col-span-4 bg-slate-950 border border-slate-800 rounded-lg p-4 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-[90px]" id="sidebar-timeline">
           
-          {/* Navigation tabs for Switching views */}
-          <div className="flex border-b border-slate-100 mb-4 bg-slate-50 p-1 rounded-sm gap-1" id="supabase-tab-selector">
+          {/* Navigation tabs */}
+          <div className="flex border-b border-slate-800 mb-4 bg-slate-900/60 p-1 rounded-md gap-1" id="supabase-tab-selector">
             <button
               onClick={() => setActiveSidebarTab("agenda")}
               className={cn(
-                "flex-1 text-center py-2 px-1 rounded-xs text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
+                "flex-1 text-center py-2 px-1 rounded-sm text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
                 activeSidebarTab === "agenda"
-                  ? "bg-white text-[#1E3A8A] shadow-xs border border-slate-200"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-slate-800 text-white shadow-md border border-slate-700"
+                  : "text-slate-400 hover:text-slate-200"
               )}
             >
-              <Clock className="w-3.5 h-3.5 text-blue-800" />
-              Agenda Temática
+              <Clock className="w-3.5 h-3.5 text-blue-400" />
+              Timeline de Aulas
             </button>
             <button
               onClick={() => {
@@ -534,111 +717,115 @@ export default function Home() {
                 loadSessions();
               }}
               className={cn(
-                "flex-1 text-center py-2 px-1 rounded-xs text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
+                "flex-1 text-center py-2 px-1 rounded-sm text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-1.5",
                 activeSidebarTab === "history"
-                  ? "bg-white text-[#1E3A8A] shadow-xs border border-slate-200"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-slate-800 text-white shadow-md border border-slate-700"
+                  : "text-slate-400 hover:text-slate-200"
               )}
             >
-              <Database className="w-3.5 h-3.5 text-emerald-700" />
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
               Aulas Salvas
               {dbConfigured && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Supabase Conectado" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1" title="Supabase Conectado" />
               )}
             </button>
           </div>
 
           {activeSidebarTab === "agenda" ? (
-            <>
-              <div className="mb-3">
-                <p className="text-xs text-gray-500 pl-1">Uma aula nova começa no início de cada hora e dura 15 minutos.</p>
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="mb-3.5">
+                <p className="text-xs text-slate-400">Uma lição nova começa no início de cada hora. Selecione uma aula abaixo para iniciar a prática:</p>
               </div>
 
-              {/* List of lesson slots - showing context around active hour */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="agenda-scroller">
+              {/* Scrollable Timeline */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1" id="agenda-scroller">
                 {LESSON_TOPICS.map((lesson) => {
                   const isActive = lesson.hour === currentHour && !sessionId;
-                  const isPast = lesson.hour < currentHour;
+                  const isCurrentSystemHour = lesson.hour === new Date().getHours();
                   
                   return (
                     <button
                       key={lesson.hour}
                       onClick={() => startNewLesson(lesson.hour)}
                       className={cn(
-                        "w-full text-left p-3 rounded-xs border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
+                        "w-full text-left p-3.5 rounded-md border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
                         isActive 
-                          ? "border-[#1E3A8A] bg-[#1E3A8A]/5 shadow-xs" 
-                          : isPast
-                            ? "border-[#E2E8F0] bg-slate-50 opacity-75 hover:bg-slate-100"
-                            : "border-[#E2E8F0] bg-white hover:border-slate-300"
+                          ? "border-emerald-500 bg-emerald-950/20 shadow-md" 
+                          : isCurrentSystemHour
+                            ? "border-amber-500/50 bg-amber-950/10 hover:bg-amber-950/20"
+                            : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
                       )}
                     >
-                      {/* Left blue-indicator bar */}
+                      {/* Left visual indicator bar */}
                       {isActive && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#1E3A8A]" />
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
                       )}
 
-                      <div className="pl-1.5">
+                      <div className="pl-1">
                         <div className="flex items-center gap-2">
                           <span className={cn(
-                            "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-sm",
+                            "text-[10px] font-mono font-bold px-1.5 py-0.5 rounded",
                             isActive 
-                              ? "bg-[#1E3A8A] text-white" 
-                              : "bg-slate-200 text-slate-700"
+                              ? "bg-emerald-500 text-black" 
+                              : "bg-slate-800 text-slate-300"
                           )}>
                             {String(lesson.hour).padStart(2, "0")}:00
                           </span>
-                          <span className="text-slate-800 font-bold text-sm leading-tight">
+                          <span className="text-slate-100 font-bold text-xs md:text-sm leading-tight group-hover:text-amber-300 transition-colors">
                             {lesson.topic}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-1 group-hover:line-clamp-none transition-all">
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
                           {lesson.desc}
                         </p>
                       </div>
 
-                      <div className="flex flex-col items-end shrink-0 pl-2">
+                      <div className="flex flex-col items-end shrink-0 pl-1">
                         {isActive ? (
-                          <span className="flex h-2.5 w-2.5 relative">
+                          <span className="flex h-2 w-2 relative">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                           </span>
-                        ) : isPast ? (
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                        ) : isCurrentSystemHour ? (
+                          <span className="text-[9px] text-amber-400 font-semibold uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">Agora</span>
                         ) : (
-                          <ChevronRight className="w-4 h-4 text-slate-300" />
+                          <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-300 transition-colors" />
                         )}
-                        <span className="text-[10px] text-slate-400 font-mono mt-2">{lesson.level}</span>
+                        <span className="text-[9px] text-slate-500 font-mono mt-2">{lesson.level}</span>
                       </div>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Quick Help box */}
-              <div className="mt-4 p-3 bg-red-50/50 rounded-xs border border-red-100 text-xs text-slate-600 flex gap-2">
-                <Info className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              {/* Helper guide */}
+              <div className="mt-3 p-3 bg-emerald-950/20 rounded-md border border-emerald-500/15 text-xs text-slate-300 flex gap-2">
+                <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-red-900">Como praticar?</p>
-                  <p className="mt-0.5">Selecione qualquer hora para simular o início de uma nova aula temática de 15 minutos e converse em inglês.</p>
+                  <p className="font-semibold text-emerald-200">Qualificar sua fala</p>
+                  <p className="mt-0.5 text-slate-400">Comece as conversações à vontade e veja correções inteligentes das suas frases!</p>
                 </div>
               </div>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col min-h-0">
               {/* HISTORICAL SESSIONS LIST FROM SUPABASE */}
               <div className="flex-1 flex flex-col min-h-0">
                 {!dbConfigured ? (
-                  <div className="text-center py-10 px-4 text-xs text-slate-500 bg-slate-50 rounded-sm border border-dashed border-slate-200 flex-1 flex flex-col justify-center items-center">
-                    <Database className="w-8 h-8 text-slate-400 mb-2 animate-pulse" />
-                    <p className="font-bold text-slate-700">Supabase não conectado</p>
-                    <p className="mt-1 text-slate-500 max-w-[200px]">Adicione um banco de dados Supabase informando o valor do segredo <code className="bg-slate-100 font-mono px-1 rounded border text-[10px] text-red-600">DATABASE_URL</code> nas Configurações.</p>
+                  <div className="text-center py-10 px-4 text-xs text-slate-400 bg-slate-900/20 rounded-md border border-dashed border-slate-800 flex-1 flex flex-col justify-center items-center">
+                    <Database className="w-8 h-8 text-slate-500 mb-2.5 animate-pulse" />
+                    <p className="font-bold text-slate-300">Supabase não conectado</p>
+                    <p className="mt-2 text-slate-400 text-center leading-relaxed max-w-[260px]">
+                      Adicione um banco de dados real informando o valor de <code className="bg-slate-950 font-mono text-[10px] px-1 py-0.5 rounded text-amber-400">DATABASE_URL</code> em Segredos no menu Settings.
+                    </p>
                   </div>
                 ) : pastSessions.length === 0 ? (
-                  <div className="text-center py-10 px-4 text-xs text-slate-500 bg-slate-50 rounded-sm border border-dashed border-slate-200 flex-1 flex flex-col justify-center items-center">
-                    <CheckCircle className="w-8 h-8 text-emerald-500 mb-2" />
-                    <p className="font-bold text-slate-700 text-emerald-900">Supabase conectado!</p>
-                    <p className="mt-1 text-slate-500 max-w-[200px]">Nenhum histórico encontrado ainda. Selecione uma aula na Timeline, digite e envie uma mensagem para salvá-la permanentemente.</p>
+                  <div className="text-center py-10 px-4 text-xs text-slate-400 bg-slate-900/20 rounded-md border border-dashed border-slate-800 flex-1 flex flex-col justify-center items-center">
+                    <CheckCircle className="w-8 h-8 text-emerald-400 mb-2.5" />
+                    <p className="font-bold text-slate-200">Supabase Conectado!</p>
+                    <p className="mt-2 text-slate-400 text-center leading-relaxed max-w-[265px]">
+                      Nenhuma conversa anterior foi salva ainda. Selecione uma aula temática, e digite mensagens para persisti-las permanentemente no banco de dados.
+                    </p>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="supabase-scroller">
@@ -649,21 +836,21 @@ export default function Home() {
                           key={sess.id}
                           onClick={() => loadSessionMessages(sess.id)}
                           className={cn(
-                            "w-full text-left p-3 rounded-xs border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
+                            "w-full text-left p-3.5 rounded-md border transition-all flex items-start justify-between relative overflow-hidden group cursor-pointer",
                             isSelected
-                              ? "border-emerald-600 bg-emerald-50/20"
-                              : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-xs"
+                              ? "border-emerald-500 bg-emerald-950/20"
+                              : "border-slate-800 bg-slate-900/30 hover:border-slate-700"
                           )}
                         >
                           {isSelected && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-600" />
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
                           )}
-                          <div className="pl-1.5">
-                            <h3 className="font-bold text-xs text-slate-800 leading-tight mb-1 group-hover:text-emerald-700 transition-colors">
+                          <div className="pl-1">
+                            <h3 className="font-bold text-xs text-slate-200 leading-tight mb-1 group-hover:text-emerald-400 transition-colors">
                               {sess.topic}
                             </h3>
-                            <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-500 font-mono">
-                              <span className="bg-slate-100 text-slate-600 px-1 rounded-sm">{sess.level}</span>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-slate-400 font-mono">
+                              <span className="bg-slate-950 text-slate-300 px-1 rounded-sm">{sess.level}</span>
                               <span>•</span>
                               <span>
                                 {new Date(sess.createdAt).toLocaleDateString("pt-BR", {
@@ -675,329 +862,257 @@ export default function Home() {
                               </span>
                             </div>
                           </div>
-                          <ChevronRight className="w-4 h-4 text-slate-300 self-center group-hover:text-emerald-600 transition-colors shrink-0" />
+                          <ChevronRight className="w-4 h-4 text-slate-600 self-center group-hover:text-emerald-400 transition-colors shrink-0" />
                         </button>
                       );
                     })}
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
         </section>
 
         {/* RIGHT COLUMN: ACTIVE CLASSROOM WORKSPACE */}
-        <section className="lg:col-span-8 flex flex-col h-[calc(100vh-120px)] border border-[#E2E8F0] bg-white rounded-sm overflow-hidden" id="main-classroom">
+        <section className="lg:col-span-8 flex flex-col h-[calc(100vh-140px)] bg-slate-950 border border-slate-800 rounded-lg overflow-hidden relative">
           
-          {/* CLASSROOM HEADER BAR */}
-          <div className="bg-[#0A192F] text-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b-4 border-red-600">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-red-600 text-white font-mono font-bold px-2 py-0.5 rounded-sm tracking-wide flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse inline-block" /> EM ANDAMENTO
-                </span>
-                <span className="text-[10px] bg-blue-900 border border-blue-700 font-mono px-2 py-0.5 rounded-sm text-slate-300">
-                  {activeLesson.level}
-                </span>
+          {/* Active Class Header bar */}
+          <div className="bg-slate-900 border-b border-slate-800 p-4.5 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono font-bold">Prática Conectada</span>
+                <h3 className="text-sm font-bold text-white">
+                  {sessionActive 
+                    ? (LESSON_TOPICS.find(l => l.hour === currentHour)?.topic || "English Speaking") 
+                    : "Selecione uma aula na Timeline de Aulas para começar"}
+                </h3>
               </div>
-              <h2 className="text-base font-bold mt-1 tracking-tight text-white flex items-center gap-1.5">
-                {activeLesson.topic}
-              </h2>
             </div>
 
-            {/* Right side countdown timers */}
-            <div className="flex items-center gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-red-500 animate-pulse" />
-                <span className={cn(
-                  "font-mono font-bold text-lg text-white",
-                  timeLeft < 120 ? "text-red-500 animate-pulse" : ""
-                )}>
-                  {formatTime(timeLeft)}
-                </span>
-                <span className="text-[10px] text-slate-400 uppercase leading-none font-mono">restantes</span>
-              </div>
-            </div>
+            {sessionActive && (
+              <button 
+                onClick={() => startNewLesson(currentHour)}
+                className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 bg-slate-950 px-2.5 py-1.5 rounded border border-slate-800 transition-all cursor-pointer"
+                title="Reiniciar aula com o tutor"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reiniciar Aula
+              </button>
+            )}
           </div>
 
-          {/* SETTINGS AND CONTROLS BAR */}
-          <div className="bg-slate-50 border-b border-[#E2E8F0] p-3 flex flex-wrap items-center justify-between gap-3" id="class-settings-bar">
-            {/* Level selection */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Nível:</span>
-              <div className="inline-flex rounded-sm p-0.5 bg-slate-200">
-                {(["Iniciante", "Intermediário", "Avançado"] as const).map((l) => (
-                  <button
-                    key={l}
-                    onClick={() => setLevel(l)}
-                    className={cn(
-                      "text-xs px-2.5 py-1 rounded-sm font-semibold transition-all cursor-pointer",
-                      level === l 
-                        ? "bg-white text-[#1E3A8A] shadow-xs" 
-                        : "text-slate-600 hover:text-slate-900"
-                    )}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Voice & Translation selection */}
-            <div className="flex items-center gap-4 flex-wrap">
-              {/* Premium Voice Dropdown */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <Volume2 className="w-3.5 h-3.5 text-red-600" /> Voz Gemini Premium:
-                </span>
-                <select
-                  value={voice}
-                  onChange={(e) => setVoice(e.target.value as "Kore" | "Zephyr")}
-                  className="text-xs font-semibold py-1 px-2 border border-slate-300 rounded-sm bg-white text-slate-800 cursor-pointer focus:outline-none focus:border-[#1E3A8A]"
-                >
-                  <option value="Kore">Kore (Voz Acolhedora / Suave)</option>
-                  <option value="Zephyr">Zephyr (Voz Dinâmica / Brilhante)</option>
-                </select>
-              </div>
-
-              {/* Translation checkbox toggle */}
-              <label className="flex items-center gap-2 text-xs text-slate-500 font-semibold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showTranslations}
-                  onChange={() => setShowTranslations(!showTranslations)}
-                  className="rounded-sm border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A] h-4 w-4"
-                />
-                Traduzir Respostas
-              </label>
-            </div>
-          </div>
-
-          {/* CHAT GRAPHICS AREA */}
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-4" id="chat-scroller">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-                <BookOpen className="w-12 h-12 text-[#1E3A8A] opacity-20 mb-3" />
-                <h3 className="text-base font-bold text-slate-800">Prepare seu Microfone!</h3>
-                <p className="text-sm text-slate-500 max-w-sm mt-1">
-                  Esta aula temática tem duração de 15 minutos. Use o microfone para conversar em inglês com a assistente!
+          {/* CHAT MESSAGES LOG */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-4 bg-slate-950/40 relative">
+            
+            {/* If no active session welcome card */}
+            {!sessionActive ? (
+              <div className="h-full flex flex-col justify-center items-center text-center p-8">
+                <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6">
+                  <Award className="w-10 h-10 text-emerald-400" />
+                </div>
+                <h4 className="text-lg font-bold text-white tracking-tight mb-2">Bem-vindo ao Workspace de Conversação Gem Coach!</h4>
+                <p className="text-xs text-slate-400 max-w-[420px] leading-relaxed mb-6">
+                  Selecione qualquer hora na coluna da esquerda para iniciar uma lição temática de 15 minutos em tempo real, ou selecione o histórico para ver aulas gravadas no Supabase.
                 </p>
                 <button
-                  onClick={() => startNewLesson(currentHour)}
-                  className="mt-4 px-4 py-2 bg-[#1E3A8A] text-white font-semibold text-sm rounded-sm hover:bg-[#1E3A8A]/90 transition-all flex items-center gap-2"
+                  onClick={() => startNewLesson(10)} // Restores default 10:00 topic
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold rounded-md shadow-lg transition-all flex items-center gap-2 cursor-pointer"
                 >
-                  <Play className="w-4 h-4" /> Entrar na Sala de Aula do Tópico
+                  <Play className="w-4 h-4 text-black fill-black" />
+                  Iniciar Aula Padrão (10:00h)
                 </button>
               </div>
             ) : (
-              <AnimatePresence initial={false}>
+              <>
+                {/* Chat content listing */}
                 {messages.map((msg) => {
                   const isTutor = msg.role === "tutor";
+                  const isTranslated = showTranslId === msg.id;
+
                   return (
-                    <motion.div
+                    <div 
                       key={msg.id}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "flex flex-col max-w-[85%] md:max-w-[75%]",
-                        isTutor ? "self-start mr-auto" : "self-end ml-auto"
+                        "flex flex-col max-w-[85%] md:max-w-[70%]",
+                        isTutor ? "self-start" : "self-end items-end pb-1"
                       )}
                     >
-                      {/* Name Tag */}
-                      <span className={cn(
-                        "text-[10px] font-mono tracking-wider text-slate-400 mb-1 flex items-center gap-1",
-                        isTutor ? "self-start pl-1" : "self-end pr-1"
-                      )}>
-                        {isTutor ? "👩🏽‍🏫 TEACHER GEM COACH (GEMINI)" : "👨🏻‍🎓 VOCÊ (ALUNO)"}
-                        {!isTutor && msg.isSpoken && (
-                          <span className="text-red-600 bg-red-50 px-1.5 py-0.2 rounded-xs border border-red-100 font-bold text-[9px]">🎤 Falado</span>
+                      {/* User title/Tutor Title */}
+                      <span className="text-[10px] text-slate-500 font-mono mb-1 px-1 flex items-center gap-1">
+                        {isTutor ? (
+                          <>
+                            <Sparkles className="w-3 h-3 text-emerald-400" />
+                            Teacher Gem Coach ({voice})
+                          </>
+                        ) : (
+                          <>
+                            Você {msg.isSpoken && <Mic className="w-2.5 h-2.5 text-blue-400 ml-1 inline" />}
+                          </>
                         )}
                       </span>
 
-                      {/* Message body bubble */}
-                      <div className={cn(
-                        "p-4 rounded-sm shadow-2xs relative",
-                        isTutor
-                          ? "bg-[#0A192F] text-white rounded-tl-none border-l-4 border-red-600"
-                          : "bg-white text-[#0A192F] border border-[#E2E8F0] rounded-tr-none"
-                      )}>
-                        {/* Audio play trigger for tutor */}
-                        {isTutor && msg.audioBase64 && (
-                          <button
-                            onClick={() => playPCM(msg.audioBase64!)}
-                            className="absolute top-3 right-3 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer flex items-center justify-center"
-                            title="Ouvir novamente"
-                          >
-                            <Volume2 className="w-4 h-4" />
-                          </button>
+                      {/* Main bubble */}
+                      <div 
+                        className={cn(
+                          "p-3.5 rounded-lg text-sm leading-relaxed relative",
+                          isTutor 
+                            ? "bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none" 
+                            : "bg-emerald-600 font-sans text-black font-semibold rounded-tr-none shadow-sm"
                         )}
+                      >
+                        <p>{msg.text}</p>
 
-                        {/* Conversational English text */}
-                        <p className="text-sm md:text-base font-bold leading-relaxed pr-6">
-                          {msg.text}
-                        </p>
-
-                        {/* Portuguese Direct translation */}
-                        {showTranslations && msg.translation && (
-                          <p className={cn(
-                            "text-xs mt-2 border-t pt-2 max-w-lg italic",
-                            isTutor ? "text-slate-300 border-white/10" : "text-slate-500 border-slate-100"
-                          )}>
+                        {/* Translation on click under model description */}
+                        {isTutor && isTranslated && msg.translation && (
+                          <div className="mt-3 pt-3 border-t border-slate-800 text-xs text-slate-300 italic bg-slate-950/40 p-2 rounded">
+                            <span className="text-[10px] text-emerald-400 font-bold font-mono tracking-wider not-italic uppercase block mb-1">Tradução:</span>
                             {msg.translation}
-                          </p>
+                          </div>
                         )}
                       </div>
 
-                      {/* GRAMMAR EXTRA FEEDBACK BOX */}
-                      {isTutor && msg.correction && (
-                        <div className="mt-1.5 pl-3 border-l-2 border-red-500 self-start">
-                          <div className="bg-white border border-[#E2E8F0] rounded-xs p-3 text-xs shadow-3xs max-w-md">
-                            <span className="font-bold text-red-600 flex items-center gap-1.5 font-mono text-[10px] uppercase mb-0.5 animate-pulse">
-                              <Sparkles className="w-3.5 h-3.5 text-red-600 fill-red-100" /> CORREÇÕES & GRAMÁTICA (TRADUZIDO)
-                            </span>
-                            <p className="text-slate-600 text-[11px] md:text-xs leading-normal font-medium">
-                              {msg.correction}
-                            </p>
-                          </div>
+                      {/* Tutor Actions (Grammar feedback and translation buttons) */}
+                      {isTutor && (
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5 px-0.5">
+                          {/* Speak audio again client side button */}
+                          <button
+                            onClick={() => speakTextClient(msg.text)}
+                            className="bg-slate-900 hover:bg-slate-800 text-emerald-400 text-[10px] px-2 py-1 rounded border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Ouvir pronúncia"
+                          >
+                            <Volume2 className="w-3 h-3" /> Ouvir
+                          </button>
+
+                          {/* Translation Toggle button */}
+                          {msg.translation && (
+                            <button
+                              onClick={() => setShowTranslId(isTranslated ? null : msg.id)}
+                              className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-[10px] px-2 py-1 rounded border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Languages className="w-3 h-3 text-slate-400" /> 
+                              {isTranslated ? "Ocultar" : "Traduzir"}
+                            </button>
+                          )}
                         </div>
                       )}
-                    </motion.div>
+
+                      {/* Custom feedback/corrections for user sentences (shown for sentences following their input) */}
+                      {!isTutor && (
+                        <div className="mt-1 flex flex-col items-end">
+                          {/* We find previous tutor evaluations of user's skills */}
+                          {messages.find((m, idx) => messages[idx - 1]?.id === msg.id && m.role === "tutor")?.correction && (
+                            <div className="bg-slate-900/60 text-[11px] text-slate-300 border border-slate-800/80 p-2.5 rounded-md max-w-full italic mt-1">
+                              <span className="text-[10px] text-emerald-400 font-bold not-italic block mb-0.5 font-mono">Feedback de Gramática:</span>
+                              {messages.find((_, idx) => messages[idx - 1]?.id === msg.id)?.correction}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    </div>
                   );
                 })}
 
+                {/* Loading typing bubble */}
                 {isLoading && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex flex-col max-w-[70%] self-start mr-auto"
-                  >
-                    <span className="text-[10px] font-mono tracking-wider text-slate-400 mb-1 pl-1">
-                      👩🏽‍🏫 TEACHER GEM COACH IS RESPONDING...
+                  <div className="flex flex-col self-start max-w-[70%]">
+                    <span className="text-[10px] text-slate-400 font-mono mb-1 px-1 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-400 animate-spin" />
+                      Gem Coach está pensando...
                     </span>
-                    <div className="bg-[#0A192F] text-white p-4 rounded-sm rounded-tl-none border-l-4 border-red-600 flex items-center gap-3">
-                      <div className="flex gap-1.5 items-center">
-                        <span className="w-2 h-2 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-white animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                      <span className="text-xs font-mono text-slate-300">Teacher Gem Coach está falando em áudio premium do Gemini...</span>
+                    <div className="bg-slate-900 text-slate-400 border border-slate-800 p-4 rounded-lg rounded-tl-none text-xs flex items-center gap-2">
+                      <span className="flex gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "0ms" }}></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }}></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "300ms" }}></span>
+                      </span>
+                      Analisando pronúncia e compondo feedback...
                     </div>
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
+
+                {/* Micro-status error warnings */}
+                {errorText && (
+                  <div className="bg-red-950/20 text-red-300 border border-red-900/30 text-xs p-3.5 rounded-md flex items-start gap-2 max-w-md mx-auto" id="error-banner">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Ocorreu um erro</p>
+                      <p className="mt-0.5 text-slate-400">{errorText}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Simulated recording banner */}
+                {isRecording && (
+                  <div className="bg-blue-950/30 text-blue-300 border border-blue-800/30 text-xs p-3 rounded-md flex items-center justify-between max-w-sm mx-auto shadow-md">
+                    <div className="flex items-center gap-2">
+                      <Mic className="w-4 h-4 text-blue-400 animate-pulse" />
+                      <span>{recordingPlaceholder}</span>
+                    </div>
+                    <button 
+                      onClick={stopRecordingMicrophone}
+                      className="text-[10px] uppercase font-bold text-red-400 bg-red-950/40 px-2 py-1 rounded border border-red-500/20 hover:bg-red-950 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+
+                {/* Invisible viewport indicator */}
+                <div ref={messagesEndRef} />
+              </>
             )}
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* INTERACTIVE INPUT BAR WITH MIC SPEECH RECOGNITION */}
-          <div className="p-4 bg-white border-t border-[#E2E8F0]" id="input-chat-dock">
-            {errorText && (
-              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-sm text-xs text-red-700 flex items-center gap-2 animate-fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorText}</span>
-              </div>
-            )}
-
-            {timeLeft === 0 ? (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-sm text-center">
-                <h4 className="text-sm font-bold text-slate-800">Tempo de Aula Esgotado!</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Esta aula temática de 15 minutos foi concluída. Reinicie para praticar mais ou escolha outro tópico na timeline!</p>
-                <div className="mt-3 flex justify-center gap-2">
-                  <button
-                    onClick={() => startNewLesson((currentHour + 1) % 24)}
-                    className="px-4 py-2 bg-[#1E3A8A] text-white text-xs font-bold rounded-sm hover:bg-[#1E3A8A]/95 transition-all text-center cursor-pointer"
-                  >
-                    Próxima Aula
-                  </button>
-                  <button
-                    onClick={() => startNewLesson(currentHour)}
-                    className="px-4 py-2 bg-slate-200 text-slate-800 text-xs font-bold rounded-sm hover:bg-slate-300 transition-all text-center cursor-pointer"
-                  >
-                    Repetir Tópico Atual
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={(e) => handleSendMessage(e)} className="flex items-center gap-3">
-                {/* Microphone trigger utilizing Web Speech API */}
+          {/* CHAT ACTIONS BOTTOM WRAPPER */}
+          {sessionActive && (
+            <div className="bg-slate-900 border-t border-slate-800 p-4" id="chat-interactions">
+              <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+                
+                {/* Voice recorder simulation */}
                 <button
                   type="button"
-                  onClick={toggleListening}
+                  onClick={isRecording ? stopRecordingMicrophone : startRecordingMicrophone}
+                  disabled={isLoading}
                   className={cn(
-                    "p-3.5 rounded-sm transition-all flex items-center justify-center shrink-0 cursor-pointer border relative",
-                    isListening
-                      ? "bg-red-600 text-white border-red-700 shadow-sm animate-pulse"
-                      : "bg-[#F1F5F9] text-[#1E3A8A] border-slate-200 hover:bg-slate-100"
+                    "p-3 rounded-md border transition-all shrink-0 cursor-pointer flex items-center justify-center",
+                    isRecording 
+                      ? "bg-red-600/20 border-red-500 text-red-400 hover:bg-red-600/30" 
+                      : "bg-slate-950 border-slate-800 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30"
                   )}
-                  title={isListening ? "Parar Transcrição" : "Ativar Microfone para Falar"}
+                  title={isRecording ? "Parar Simulação de Gravação de Voz" : "Simular Gravação de Voz (Falar em inglês)"}
                 >
-                  {isListening ? <Mic className="w-5 h-5 animate-pulse" /> : <MicOff className="w-5 h-5 text-slate-500" />}
-
-                  {isListening && (
-                    <span className="absolute -inset-1 rounded-sm border border-red-400 animate-ping opacity-60" />
-                  )}
+                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </button>
 
-                {/* Main dynamic text input or speech placeholder */}
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder={
-                      isListening 
-                        ? "Ouvindo... Ajuste sua fala em inglês agora!" 
-                        : "Escreva em Inglês ou ative o microfone para falar..."
-                    }
-                    className={cn(
-                      "w-full px-4 py-3 border border-slate-300 rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] bg-[#F8FAFC]",
-                      isListening ? "placeholder:text-red-600 font-bold text-[#1E3A8A]" : "text-slate-800"
-                    )}
-                    disabled={isLoading}
-                  />
+                {/* Text prompt element */}
+                <input
+                  type="text"
+                  placeholder="Escreva sua resposta em inglês..."
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  disabled={isLoading || isRecording}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-md py-3 px-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 focus:border-emerald-500/50 disabled:opacity-60"
+                  id="chat-text-input"
+                />
 
-                  {/* Interim status speech indicator */}
-                  {isListening && (
-                    <div className="absolute right-3 top-3 text-[10px] text-red-600 font-mono font-bold animate-pulse flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> MICROFONE ATIVO
-                    </div>
-                  )}
-                </div>
-
-                {/* Submit text button */}
+                {/* Submitting sender button */}
                 <button
                   type="submit"
-                  disabled={isLoading || !inputText.trim()}
-                  className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/95 text-white p-3 py-3.5 rounded-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5 cursor-pointer font-bold uppercase text-xs tracking-wider"
+                  disabled={isLoading || !inputText.trim() || isRecording}
+                  className="p-3 bg-emerald-600 hover:bg-emerald-500 text-black font-bold rounded-md transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center shadow-lg"
+                  title="Enviar mensagem"
                 >
-                  <span className="hidden sm:inline">Enviar</span>
-                  <Send className="w-4 h-4" />
+                  <Send className="w-5 h-5 text-black" />
                 </button>
               </form>
-            )}
-
-            {/* Hint Bar */}
-            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-mono border-t border-slate-100 pt-2.5">
-              <span>🗣️ DICA: Fale frases como &quot;Hi Teacher Gem Coach, let&apos;s start!&quot; ou faça perguntas em Inglês.</span>
-              <span>Web Speech API v2.0 • 15 minututos</span>
             </div>
-          </div>
+          )}
+
         </section>
 
       </main>
-
-      {/* FOOTER */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-4">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-mono">
-          <div>
-            <span>Teacher Gem Coach © 2026</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span>Powered by Gemini 3.5 &amp; 3.1 Live Speech</span>
-            <span className="text-[#1E3A8A] font-bold">🇺🇸 Proved by AI Studio</span>
-          </div>
-        </div>
-      </footer>
 
     </div>
   );

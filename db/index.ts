@@ -17,7 +17,7 @@ export function getDb() {
     try {
       poolInstance = new pg.Pool({
         connectionString,
-        // Supabase requires SSL connect or connection drops, so we allow self-signed / non-verified certs
+        // Supabase requires SSL connect or connection drops, so we allow self-signed certs
         ssl: {
           rejectUnauthorized: false,
         },

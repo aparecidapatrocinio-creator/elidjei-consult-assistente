@@ -1,24 +1,18 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { sessions, messages } from "@/db/schema";
+import { getSessionUser } from "@/lib/crypto-auth";
 
 let aiInstance: GoogleGenAI | null = null;
 
-function getGeminiClient() {
+function getGeminiClient(): GoogleGenAI {
   if (!aiInstance) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not defined in environment variables. Please check Settings > Secrets.");
+      throw new Error("GEMINI_API_KEY is not defined in your environment variables. Please check Settings secrets.");
     }
-    aiInstance = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
+    aiInstance = new GoogleGenAI({ apiKey });
   }
   return aiInstance;
 }
@@ -27,9 +21,20 @@ export async function POST(req: NextRequest) {
   try {
     const { message, history, topic, voiceName, level, sessionId, isSpoken } = await req.json();
 
-    const ai = getGeminiClient();
+    let ai;
+    try {
+      ai = getGeminiClient();
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: `Gemini não está configurado: ${e.message}. Defina GEMINI_API_KEY nas Configurações.` },
+        { status: 400 }
+      );
+    }
 
-    // Try to initialize external persistence via Supabase
+    // Attempt to grab authenticated user session
+    const user = await getSessionUser();
+
+    // Initialize Supabase if configured
     let dbSessionId = sessionId;
     let dbEnabled = false;
     let db: any = null;
@@ -38,15 +43,16 @@ export async function POST(req: NextRequest) {
       db = getDb();
       dbEnabled = !!db;
     } catch (e) {
-      console.warn("Database connection is not configured yet. Proceeding with in-memory chat session.");
+      console.warn("Database connection is not configured yet. Proceeding with local session.");
     }
 
-    // Save user's incoming message beforehand if DB is available
-    if (dbEnabled && db) {
+    // Save user's message to Supabase first if db is active and user is authenticated
+    if (dbEnabled && db && user) {
       try {
         if (!dbSessionId) {
           const [newSession] = await db.insert(sessions).values({
-            topic: topic || "Ordering Food at a Restaurant",
+            userId: user.userId,
+            topic: topic || "English Practice",
             level: level || "Iniciante",
             voice: voiceName || "Kore",
             createdHour: new Date().getHours(),
@@ -63,98 +69,64 @@ export async function POST(req: NextRequest) {
           });
         }
       } catch (dbErr) {
-        console.error("Failed to save user dialog message inside Supabase:", dbErr);
+        console.error("Failed to save user message in Supabase:", dbErr);
       }
     }
 
-    // 1. Build the prompt for conversational English tutoring
+    // Build prompting context
     const systemInstruction = `You are Teacher Gem Coach, a premium, supportive personal English tutor specializing in spoken conversation.
 Your goal is to teach English with high-quality simulated, real-world dialogue.
-The active lesson topic is: "${topic || "Ordering Food at a Restaurant"}".
-The student's English proficiency level: "${level || "Beginner"}". Adjust your vocabulary and grammar complexity accordingly (use simple terms for beginners, natural advanced phrases for advanced students).
+The user's English level is: ${level || "Iniciante"}. Adjust your vocabulary, speed, and sentence complexity accordingly.
+The current conversation topic is: "${topic || "A general speaking chat"}". Keep the conversation engaging and aligned with this topic.
 
-Your response MUST be a structured JSON object containing:
-1. "reply": Your conversational reply in English, continuing the dialogue and asking a natural/engaging follow-up question. (e.g. "That's great! Would you like chocolate sprinkles on your cappuccino?")
-2. "correction": Constructive and encouraging feedback on the student's latest input, written in Portuguese. Point out any grammar, vocabulary, or pronunciation-spelling mistakes gently and show the corrected version. If they did perfectly or had zero errors, write a friendly compliment in Portuguese. Keep it to 1 or 2 concise, supportive sentences.
-3. "translation": The direct Portuguese translation of your "reply" so the student can study and learn new words.
+You MUST respond ALWAYS in valid JSON format matching this schema:
+{
+  "reply": "your conversational response in English. Max 2-3 sentences. Keep it highly interactive and end with a question.",
+  "translation": "a Portuguese translation of your reply",
+  "correction": "A friendly feedback in Portuguese correcting any spelling, grammar, or word choices of the user's last input. If they behaved perfectly, say something supportive like 'Ótimo trabalho! Sem erros detectados.'"
+}`;
 
-Return ONLY the JSON matching the responseSchema. Do not include markdown formatting or outer code blocks.`;
+    const formattedHistory = (history || []).map((h: any) => ({
+      role: h.role === "tutor" ? "model" : "user",
+      parts: [{ text: h.text }],
+    }));
 
-    // We can format history for the prompt context
-    const structuredHistory = history && history.length > 0
-      ? history.map((h: { role: string; content: string }) => `${h.role === 'user' ? 'Student' : 'Tutor'}: "${h.content}"`).join("\n")
-      : "No previous conversation.";
+    // Add current user prompt
+    formattedHistory.push({
+      role: "user",
+      parts: [{ text: message || "Hello, I am ready to start practicing!" }],
+    });
 
-    const promptText = `Conversation History:\n${structuredHistory}\n\nStudent's latest input: "${message || "Hello, I am ready to start the lesson!"}"\n\nPlease reply of the active topic "${topic}".`;
-
-    // Get the JSON response
-    const textResponse = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptText,
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: formattedHistory.map((msg: any) => msg.parts[0].text).join("\n"),
       config: {
         systemInstruction,
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            reply: {
-              type: Type.STRING,
-              description: "The conversation reply in English suited for teaching.",
-            },
-            correction: {
-              type: Type.STRING,
-              description: "Grammar / dialogue feedback in Portuguese.",
-            },
-            translation: {
-              type: Type.STRING,
-              description: "The Portuguese translation of the reply.",
-            },
-          },
-          required: ["reply", "correction", "translation"],
-        },
       },
     });
 
-    const resultText = textResponse.text;
-    if (!resultText) {
-      throw new Error("No response generated by the AI model.");
+    const responseText = response.text;
+    if (!responseText) {
+      throw new Error("No response content generated by Gemini.");
     }
 
-    // Parse the generated text to fetch the reply
-    const parsedData = JSON.parse(resultText);
-    const englishReply = parsedData.reply || "Hello! Let's continue practicing.";
-
-    // 2. Synthesize speech using the Gemimi Live preview TTS model with premium female voice selection
-    // Selected voice can be 'Kore' (warm, supportive) or 'Zephyr' (dynamic, bright), default to 'Kore' as a premium female voice
-    const activeVoice = voiceName === "Zephyr" ? "Zephyr" : "Kore";
-
-    let base64Audio = "";
+    let parsedData;
     try {
-      const speechPrompt = `Say warmly and clearly in premium native English: ${englishReply}`;
-      
-      const speechRes = await ai.models.generateContent({
-        model: "gemini-3.1-flash-tts-preview",
-        contents: [{ parts: [{ text: speechPrompt }] }],
-        config: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: activeVoice },
-            },
-          },
-        },
-      });
-
-      const audioPart = speechRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (audioPart) {
-        base64Audio = audioPart;
-      }
-    } catch (speechErr) {
-      console.error("Speech synthesis failed, proceeding with text-only reply:", speechErr);
+      parsedData = JSON.parse(responseText.trim());
+    } catch (parseErr) {
+      console.warn("Retrieved invalid JSON from Gemini, fallback parsing...", responseText);
+      parsedData = {
+        reply: "Sorry, I had a slight system error parsing the reply. Could you try saying that again?",
+        translation: "Desculpe, tive um leve erro ao analisar a resposta. Você poderia falar de novo?",
+        correction: "Não foi possível analisar seus erros nesse momento.",
+      };
     }
 
-    // Save tutor's response in Supabase if DB is active
-    if (dbEnabled && db && dbSessionId) {
+    const englishReply = parsedData.reply || "Wonderful! Let's continue.";
+
+    // Save tutor's response inside Supabase
+    if (dbEnabled && db && dbSessionId && user) {
       try {
         await db.insert(messages).values({
           sessionId: dbSessionId,
@@ -162,26 +134,26 @@ Return ONLY the JSON matching the responseSchema. Do not include markdown format
           text: englishReply,
           translation: parsedData.translation || "",
           correction: parsedData.correction || "",
-          audioBase64: base64Audio || null,
+          audioBase64: null,
           isSpoken: false,
         });
       } catch (dbErr) {
-        console.error("Failed to save tutor reply into Supabase database:", dbErr);
+        console.error("Failed to save tutor response in Supabase:", dbErr);
       }
     }
 
     return NextResponse.json({
       reply: englishReply,
-      correction: parsedData.correction || "Ótimo trabalho!",
-      translation: parsedData.translation || "",
-      audioBase64: base64Audio,
+      translation: parsedData.translation || "Sem tradução disponível.",
+      correction: parsedData.correction || "Excelente!",
+      audioBase64: null, // synthesized client side
       sessionId: dbSessionId,
     });
 
   } catch (error: any) {
-    console.error("API /api/chat error:", error);
+    console.error("api/chat error:", error);
     return NextResponse.json(
-      { error: error?.message || "An error occurred during speech and text tutor generation." },
+      { error: error?.message || "An internal error occurred." },
       { status: 500 }
     );
   }

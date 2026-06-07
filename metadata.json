@@ -1,6 +1,10 @@
 {
-  "name": "Teacher Gem Coach",
-  "description": "Assistente pessoal especialista em ensinar inglês com conversação, voz premium do Gemini e aulas dinâmicas de 15 minutos renovadas a cada hora.",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Gem Coach",
+  "description": "Tutor premium de inglês impulsionado por IA com suporte a fala, áudio e persistência no Supabase.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

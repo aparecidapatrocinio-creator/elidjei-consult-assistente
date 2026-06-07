@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { sessions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { getSessionUser } from "@/lib/crypto-auth";
 
 export async function GET() {
   try {
+    const user = await getSessionUser();
+    if (!user) {
+      return NextResponse.json({ sessions: [], dbConfigured: true, error: "Usuário não autenticado." });
+    }
+
     let db;
     try {
       db = getDb();
@@ -12,18 +18,21 @@ export async function GET() {
       return NextResponse.json({ sessions: [], dbConfigured: false });
     }
 
-    const allSessions = await db
-      .select()
-      .from(sessions)
-      .orderBy(desc(sessions.createdAt))
-      .limit(30);
+    try {
+      const allSessions = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.userId, user.userId))
+        .orderBy(desc(sessions.createdAt))
+        .limit(30);
 
-    return NextResponse.json({ sessions: allSessions, dbConfigured: true });
+      return NextResponse.json({ sessions: allSessions, dbConfigured: true });
+    } catch (queryError: any) {
+      console.warn("Database query failed (possibly schema not initialized or invalid credentials):", queryError);
+      return NextResponse.json({ sessions: [], dbConfigured: false, error: queryError?.message });
+    }
   } catch (error: any) {
     console.error("GET /api/sessions error:", error);
-    return NextResponse.json(
-      { error: error?.message || "An error occurred fetching historical sessions." },
-      { status: 500 }
-    );
+    return NextResponse.json({ sessions: [], dbConfigured: false, error: error?.message });
   }
 }
